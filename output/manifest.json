@@ -1,0 +1,54 @@
+{
+  "project": "Project AccompAni",
+  "raga_default": "shankarabharanam",
+  "modules": [
+    {
+      "id": "bounded_motifs",
+      "number": "01",
+      "title": "Bounded Motifs",
+      "carnatic_name": "Alankara Varisai",
+      "description": "Stepwise and vakra 4-note motifs shifting strictly within S to \u1e60 with zero octave wrapping.",
+      "accent": "#008272",
+      "exercise_count": 3,
+      "files": {
+        "shankarabharanam": "output/bounded_motifs.md"
+      }
+    },
+    {
+      "id": "cumulative_ceilings",
+      "number": "02",
+      "title": "Cumulative Ceilings",
+      "carnatic_name": "Sarali Sthayi Extensions",
+      "description": "Progressive range expansions (S\u2192M, S\u2192P, S\u2192D, S\u2192N, S\u2192\u1e60) anchored back to Shadjam.",
+      "accent": "#0078d4",
+      "exercise_count": 6,
+      "files": {
+        "shankarabharanam": "output/cumulative_ceilings.md"
+      }
+    },
+    {
+      "id": "bowing_and_kala",
+      "number": "03",
+      "title": "Bowing & Kala",
+      "carnatic_name": "Sanchara Bowing & Tri-Kala",
+      "description": "Separate bows (\u2293 / \u2228), 2-note Jodi slurs, 4-note Anga slurs across bar lines, and 2nd-speed Dvitiya Kala.",
+      "accent": "#4f46e5",
+      "exercise_count": 7,
+      "files": {
+        "shankarabharanam": "output/bowing_and_kala.md"
+      }
+    },
+    {
+      "id": "bounded_thirds",
+      "number": "04",
+      "title": "Bounded Thirds",
+      "carnatic_name": "Entry-Level Dhatu Varisai",
+      "description": "Controlled single-skip intervals (leap \u2264 2) strictly bounded between S and \u1e60.",
+      "accent": "#b45309",
+      "exercise_count": 20,
+      "files": {
+        "shankarabharanam": "output/bounded_thirds.md"
+      }
+    }
+  ]
+}

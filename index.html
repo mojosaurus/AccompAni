@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>Project AccompAni — Carnatic Violin Practice Companion</title>
+    <link rel="stylesheet" href="static/styles.css?v=6" />
+</head>
+
+<body>
+    <!-- PERSISTENT METRO HEADER -->
+    <header class="app-header">
+        <div class="header-left">
+            <button id="backBtn" type="button" class="metro-nav-btn hidden" title="Go back to previous screen">
+                ← Back
+            </button>
+            <button id="homeBrandBtn" type="button" class="brand-btn" title="Return to Home">
+                <span class="brand-square"></span>
+                <span class="brand-name">Project AccompAni</span>
+            </button>
+            <nav id="breadcrumbNav" class="breadcrumbs" aria-label="Breadcrumb"></nav>
+        </div>
+
+        <div class="header-right">
+            <button id="aboutNavBtn" type="button" class="metro-nav-btn">
+                About
+            </button>
+        </div>
+    </header>
+
+    <!-- SINGLE-PAGE METRO VIEWPORT -->
+    <main class="spa-viewport">
+        <!-- STEP 1: HOME SCREEN (Select Practice Level) -->
+        <section id="view-home" class="metro-view active-view" aria-labelledby="homeHeading">
+            <div class="view-container">
+                <div class="view-hero">
+                    <span class="kicker">STEP 01 · CARNATIC VIOLIN ABHYASA GANAM</span>
+                    <h1 id="homeHeading">Select Practice Level</h1>
+                    <p>Progressive, grammatically strict violin training—mastering bowing, fingering, and kala step by
+                        step.</p>
+                </div>
+
+                <div class="metro-grid grid-2">
+                    <button type="button" class="metro-tile tile-teal" data-select-level="sarali">
+                        <div class="tile-top">
+                            <span class="tile-tag">LEVEL 01 · ACTIVE</span>
+                            <span class="tile-arrow">→</span>
+                        </div>
+                        <div class="tile-body">
+                            <h2>Sarali Varisai</h2>
+                            <p class="tile-italic">Svarāvali</p>
+                            <p class="tile-desc">
+                                Foundational 1-octave scale grammar (S to Ṡ), finger independence, bow divisions, and
+                                speed control.
+                            </p>
+                        </div>
+                        <div class="tile-footer">Select Ragam &amp; Modules →</div>
+                    </button>
+
+                    <div class="metro-tile tile-locked" aria-disabled="true">
+                        <div class="tile-top">
+                            <span class="tile-tag">LEVEL 02 · LOCKED</span>
+                            <span class="tile-badge-soon">Coming Soon</span>
+                        </div>
+                        <div class="tile-body">
+                            <h2>Janta Varisai</h2>
+                            <p class="tile-italic">Janta Svarāvali</p>
+                            <p class="tile-desc">
+                                Paired-note finger agility, gamaka preparation, and double-stroke bow articulation.
+                            </p>
+                        </div>
+                        <div class="tile-footer">Unlocks after Sarali Varisai</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- STEP 2: RAGAM SELECTION -->
+        <section id="view-ragam" class="metro-view" aria-labelledby="ragamHeading">
+            <div class="view-container">
+                <div class="view-hero">
+                    <span class="kicker">STEP 02 · MELAKARTA &amp; JANYA SCALE</span>
+                    <h1 id="ragamHeading">Select Ragam</h1>
+                    <p>Choose the melodic scale container that governs your left-hand finger frame and swara rules.</p>
+                </div>
+
+                <div class="metro-grid grid-3">
+                    <button type="button" class="metro-tile tile-emerald" data-select-ragam="shankarabharanam">
+                        <div class="tile-top">
+                            <span class="tile-tag">29TH MELAKARTA · DEFAULT</span>
+                            <span class="tile-arrow">→</span>
+                        </div>
+                        <div class="tile-body">
+                            <h2>Shankarabharanam</h2>
+                            <p class="tile-italic">Dheerasankarabharanam</p>
+                            <p class="tile-scale">S &nbsp; R2 &nbsp; G3 &nbsp; M1 &nbsp; P &nbsp; D2 &nbsp; N3 &nbsp; Ṡ
+                            </p>
+                            <p class="tile-desc">
+                                Standard beginner Carnatic violin raga aligned with open Pa and Sa strings.
+                            </p>
+                        </div>
+                        <div class="tile-footer">Choose Exercise Focus →</div>
+                    </button>
+
+                    <div class="metro-tile tile-locked" aria-disabled="true">
+                        <div class="tile-top">
+                            <span class="tile-tag">15TH MELAKARTA</span>
+                            <span class="tile-badge-soon">Coming Soon</span>
+                        </div>
+                        <div class="tile-body">
+                            <h2>Mayamalavagowla</h2>
+                            <p class="tile-italic">Māyāmāḷavagauḷa</p>
+                            <p class="tile-scale">S &nbsp; R1 &nbsp; G3 &nbsp; M1 &nbsp; P &nbsp; D1 &nbsp; N3 &nbsp; Ṡ
+                            </p>
+                            <p class="tile-desc">
+                                Traditional vocal Sarali raga featuring semitone R1 and D1 finger placements.
+                            </p>
+                        </div>
+                        <div class="tile-footer">In Development</div>
+                    </div>
+
+                    <div class="metro-tile tile-locked" aria-disabled="true">
+                        <div class="tile-top">
+                            <span class="tile-tag">28TH MELAKARTA JANYA</span>
+                            <span class="tile-badge-soon">Coming Soon</span>
+                        </div>
+                        <div class="tile-body">
+                            <h2>Mohanam</h2>
+                            <p class="tile-italic">Audava Pentatonic</p>
+                            <p class="tile-scale">S &nbsp; R2 &nbsp; G3 &nbsp; P &nbsp; D2 &nbsp; Ṡ</p>
+                            <p class="tile-desc">
+                                Five-note pentatonic scale omitting Madhyamam and Nishadam.
+                            </p>
+                        </div>
+                        <div class="tile-footer">In Development</div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- STEP 3: EXERCISE FOCUS (4 Progressive Modules) -->
+        <section id="view-modules" class="metro-view" aria-labelledby="modulesHeading">
+            <div class="view-container">
+                <div class="view-hero">
+                    <span class="kicker" id="modulesKicker">STEP 03 · SARALI VARISAI · SHANKARABHARANAM</span>
+                    <h1 id="modulesHeading">Choose Exercise Focus</h1>
+                    <p>Select a module in order of increasing bowing and fingering complexity.</p>
+                </div>
+
+                <div id="modulesGrid" class="metro-grid grid-2"></div>
+            </div>
+        </section>
+
+        <!-- STEP 4: PLAYALONG STAGE -->
+        <section id="view-playalong" class="metro-view playalong-view" aria-label="Interactive Playalong">
+            <div class="top-shell" id="playalongTopShell">
+                <!-- Mobile Quick Bar (Visible on phones to toggle settings while keeping Play accessible) -->
+                <div class="mobile-quick-bar">
+                    <button id="mobilePlayBtn" type="button" class="btn-primary mobile-play-btn">▶ Play</button>
+                    <button id="toggleControlsBtn" type="button" class="btn-secondary" aria-expanded="false">
+                        ⚙ Controls &amp; Tambura
+                    </button>
+                </div>
+
+                <div class="control-bar" id="controlBar">
+                    <label class="control-group exercise-picker">
+                        <span>Exercise</span>
+                        <div class="nav-row">
+                            <button id="prevBtn" type="button" class="btn-icon"
+                                title="Previous Exercise (Left Arrow)">◀</button>
+                            <select id="exerciseSelect" aria-label="Select specific exercise"></select>
+                            <button id="nextBtn" type="button" class="btn-icon"
+                                title="Next Exercise (Right Arrow)">▶</button>
+                        </div>
+                    </label>
+
+                    <div class="control-group">
+                        <span>Pace (Per Beat)</span>
+                        <div class="segmented" id="speedGroup" role="group" aria-label="Playback pace">
+                            <button type="button" class="seg-btn active" data-speed="1">1 s</button>
+                            <button type="button" class="seg-btn" data-speed="0.5">0.5 s</button>
+                            <button type="button" class="seg-btn" data-speed="0.25">0.25 s</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <span>Order</span>
+                        <div class="segmented" id="orderGroup" role="group" aria-label="Playback order">
+                            <button type="button" class="seg-btn active" data-order="serial">Serial</button>
+                            <button type="button" class="seg-btn" data-order="random">Random</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group">
+                        <span>Repeat</span>
+                        <div class="segmented" id="repeatGroup" role="group" aria-label="Repeat mode">
+                            <button type="button" class="seg-btn active" data-repeat="loop">Loop</button>
+                            <button type="button" class="seg-btn" data-repeat="auto">Auto-advance</button>
+                        </div>
+                    </div>
+
+                    <div class="control-group transport-group">
+                        <span>Transport</span>
+                        <div class="nav-row">
+                            <button id="playPauseBtn" type="button" class="btn-primary">▶ Play</button>
+                            <button id="restartBtn" type="button" class="btn-secondary"
+                                title="Restart current exercise from Line 1">↺ Reset</button>
+                            <button id="audioToggleBtn" type="button" class="btn-secondary active"
+                                title="Toggle melody & beat click">
+                                🔊 Swaras
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- TAMBURA WIDGET (Shruti E, Pa/Ma, Volume 50, Continuous Background Drone) -->
+                    <div class="tambura-box" aria-label="Tambura Shruti Box">
+                        <div class="tambura-top">
+                            <div class="tambura-title-wrap">
+                                <span class="tambura-label">Shruti</span>
+                                <button id="tamburaToggleBtn" type="button" class="tambura-power active"
+                                    title="Toggle continuous Tambura drone">
+                                    Tambura ON
+                                </button>
+                            </div>
+                            <span id="shrutiValue" class="tambura-value">E</span>
+                        </div>
+
+                        <input id="shrutiSlider" class="tambura-slider" type="range" min="0" max="11" step="1" value="4"
+                            aria-label="Tambura Shruti pitch" />
+
+                        <div class="tambura-bottom">
+                            <div class="tambura-radios" role="radiogroup" aria-label="Tambura 5th or 4th string">
+                                <label class="tambura-radio">
+                                    <input type="radio" name="tamburaNote" value="Pa" checked />
+                                    <span class="radio-dot"></span>
+                                    <span>Pa</span>
+                                </label>
+                                <label class="tambura-radio">
+                                    <input type="radio" name="tamburaNote" value="Ma" />
+                                    <span class="radio-dot"></span>
+                                    <span>Ma</span>
+                                </label>
+                            </div>
+
+                            <div class="tambura-vol-wrap">
+                                <div class="tambura-vol-header">
+                                    <span class="tambura-label">Volume</span>
+                                    <span id="tamburaVolValue" class="tambura-value-sm">50</span>
+                                </div>
+                                <input id="tamburaVolSlider" class="tambura-slider tambura-vol-slider" type="range"
+                                    min="0" max="100" step="1" value="50" aria-label="Tambura volume" />
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <section class="explainer-card" aria-live="polite">
+                    <div class="explainer-main">
+                        <div class="explainer-title-row">
+                            <h2 id="exTitle">Loading exercise...</h2>
+                            <span id="exMotifBadge" class="badge badge-motif">—</span>
+                            <span id="exPatternBadge" class="badge badge-pattern">—</span>
+                        </div>
+                        <p id="exDescription" class="explainer-desc">
+                            Preparing exercise notation...
+                        </p>
+                    </div>
+                    <div class="explainer-status">
+                        <div class="status-pill">
+                            <span class="status-label">Avartanam</span>
+                            <strong id="lineProgress">Line 1 / 2</strong>
+                        </div>
+                        <div class="status-pill">
+                            <span class="status-label">Beat</span>
+                            <strong id="beatProgress">Beat 1 / 8</strong>
+                        </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="stage-container" id="stageContainer">
+                <div class="notation-track" id="notationTrack"></div>
+            </div>
+        </section>
+
+        <!-- ABOUT VIEW (Renders README.md) -->
+        <section id="view-about" class="metro-view" aria-labelledby="aboutHeading">
+            <div class="view-container">
+                <div class="about-card">
+                    <div id="readmeContent" class="markdown-body">
+                        <h1 id="aboutHeading">Loading README.md...</h1>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 5-SECOND GET-READY COUNTDOWN OVERLAY -->
+    <div id="countdownOverlay" class="countdown-overlay hidden" role="status" aria-live="assertive">
+        <div class="countdown-card">
+            <span class="countdown-label">Get Ready on Violin</span>
+            <div id="countdownNumber" class="countdown-number">5</div>
+            <p id="countdownSub" class="countdown-sub">Starting at Line 1, Beat 1...</p>
+        </div>
+    </div>
+
+    <script src="static/app.js?v=6"></script>
+</body>
+
+</html>
