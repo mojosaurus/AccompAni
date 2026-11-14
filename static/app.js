@@ -98,7 +98,11 @@
         speedSec: 1.0,
         orderMode: "serial",
         repeatMode: "loop",
+
+        // Swara Audio State
         audioEnabled: true,
+        swaraVolume: 75,
+        swaraMasterGain: null,
 
         // Tambura State (Defaults: Shruti E, Pa, Volume 50)
         shrutiIndex: 4,
@@ -110,6 +114,7 @@
         tamburaStep: 0,
         tamburaTimerId: null,
         tamburaMasterGain: null,
+        tamburaBed: null,
 
         // Timers & Web Audio Handles
         timerId: null,
@@ -126,6 +131,8 @@
     };
 
     // DOM References
+    const appHeader = document.getElementById("appHeader");
+    const spaViewport = document.getElementById("spaViewport");
     const backBtn = document.getElementById("backBtn");
     const homeBrandBtn = document.getElementById("homeBrandBtn");
     const aboutNavBtn = document.getElementById("aboutNavBtn");
@@ -134,7 +141,7 @@
     const modulesGrid = document.getElementById("modulesGrid");
     const readmeContent = document.getElementById("readmeContent");
 
-    const playalongTopShell = document.getElementById("playalongTopShell");
+    const playalongSidebar = document.getElementById("playalongSidebar");
     const mobilePlayBtn = document.getElementById("mobilePlayBtn");
     const toggleControlsBtn = document.getElementById("toggleControlsBtn");
 
@@ -145,6 +152,8 @@
     const orderGroup = document.getElementById("orderGroup");
     const repeatGroup = document.getElementById("repeatGroup");
     const audioToggleBtn = document.getElementById("audioToggleBtn");
+    const swaraVolSlider = document.getElementById("swaraVolSlider");
+    const swaraVolValue = document.getElementById("swaraVolValue");
     const playPauseBtn = document.getElementById("playPauseBtn");
     const restartBtn = document.getElementById("restartBtn");
 
@@ -178,7 +187,7 @@
     }
 
     // ==========================================================================
-    // 1. METRO SINGLE-PAGE ROUTER (Practice Level -> Ragam -> Exercise Focus)
+    // 1. METRO SINGLE-PAGE ROUTER (Moves Header into Right Panel on Playalong)
     // ==========================================================================
     function navigateTo(viewName) {
         if (state.currentView === "playalong" && viewName !== "playalong") {
@@ -187,6 +196,17 @@
 
         if (viewName !== "about") {
             state.previousView = state.currentView;
+        }
+
+        // Relocate header into the Right Panel during Playalong so Left Panel has ONLY notes
+        if (appHeader) {
+            if (viewName === "playalong" && playalongSidebar) {
+                playalongSidebar.prepend(appHeader);
+                appHeader.classList.add("in-sidebar");
+            } else if (spaViewport && appHeader.parentElement !== document.body) {
+                document.body.insertBefore(appHeader, spaViewport);
+                appHeader.classList.remove("in-sidebar");
+            }
         }
 
         const targetId = "view-" + viewName;
@@ -408,8 +428,18 @@
     }
 
     // ==========================================================================
-    // 3. WEB AUDIO ENGINE (Continuous Slurs & Multi-Beat Karvai Sustains)
+    // 3. WEB AUDIO ENGINE (Continuous Tambura Drone + Swara Volume Bus)
     // ==========================================================================
+    function getSwaraGainLevel() {
+        if (!state.audioEnabled) return 0.0001;
+        return (state.swaraVolume / 100) * 0.9;
+    }
+
+    function getTamburaGainLevel() {
+        if (!state.tamburaEnabled) return 0.0001;
+        return (state.tamburaVolume / 100) * 0.52;
+    }
+
     async function ensureAudioContext() {
         if (!state.audioCtx) {
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -425,13 +455,18 @@
             state.masterCompressor = comp;
         }
 
+        if (!state.swaraMasterGain && state.audioCtx) {
+            state.swaraMasterGain = state.audioCtx.createGain();
+            state.swaraMasterGain.gain.setValueAtTime(getSwaraGainLevel(), state.audioCtx.currentTime);
+            state.swaraMasterGain.connect(state.masterCompressor || state.audioCtx.destination);
+        }
+
         if (state.audioCtx.state === "suspended") {
             try {
                 await state.audioCtx.resume();
             } catch (_) { }
         }
 
-        // Unlock Web Audio hardware on iOS Safari with a silent buffer
         if (!state.audioUnlocked && state.audioCtx.state === "running") {
             try {
                 const buffer = state.audioCtx.createBuffer(1, 1, 22050);
@@ -450,40 +485,170 @@
         return state.masterCompressor || state.audioCtx.destination;
     }
 
-    function getTamburaGainLevel() {
-        return (state.tamburaVolume / 100) * 0.58;
+    function getSwaraOutputNode() {
+        return state.swaraMasterGain || getAudioOutputNode();
     }
 
-    function pluckTamburaString(stringIdx) {
+    function getTamburaFrequencies() {
+        const s3 = state.baseFreq / 2;
+        const fifthOrFourth = state.tamburaDroneNote === "Pa" ? s3 * 0.75 : s3 * (2 / 3);
+        const kharajSa = s3 * 0.5;
+        return {
+            s3: s3,
+            fifthOrFourth: fifthOrFourth,
+            kharajSa: kharajSa,
+        };
+    }
+
+    function startContinuousTamburaBed() {
+        if (!state.audioCtx || !state.tamburaMasterGain || state.tamburaBed) return;
+
+        const ctx = state.audioCtx;
+        const now = ctx.currentTime;
+        const freqs = getTamburaFrequencies();
+
+        const bedGain = ctx.createGain();
+        bedGain.gain.setValueAtTime(0.0001, now);
+        bedGain.gain.linearRampToValueAtTime(0.55, now + 0.6);
+
+        const jawariFilter = ctx.createBiquadFilter();
+        jawariFilter.type = "bandpass";
+        jawariFilter.frequency.setValueAtTime(freqs.s3 * 3.8, now);
+        jawariFilter.Q.setValueAtTime(1.8, now);
+
+        const jawariMix = ctx.createGain();
+        jawariMix.gain.setValueAtTime(0.38, now);
+
+        const lfo = ctx.createOscillator();
+        const lfoGain = ctx.createGain();
+        lfo.type = "sine";
+        lfo.frequency.setValueAtTime(0.22, now);
+        lfoGain.gain.setValueAtTime(freqs.s3 * 0.45, now);
+        lfo.connect(lfoGain);
+        lfoGain.connect(jawariFilter.frequency);
+
+        const createVoice = (freq, detuneCents, voiceLevel) => {
+            const oscTri = ctx.createOscillator();
+            const oscSaw = ctx.createOscillator();
+            const vGain = ctx.createGain();
+
+            oscTri.type = "triangle";
+            oscTri.frequency.setValueAtTime(freq, now);
+            oscTri.detune.setValueAtTime(detuneCents, now);
+
+            oscSaw.type = "sawtooth";
+            oscSaw.frequency.setValueAtTime(freq, now);
+            oscSaw.detune.setValueAtTime(detuneCents, now);
+
+            vGain.gain.setValueAtTime(voiceLevel, now);
+
+            oscTri.connect(vGain);
+            vGain.connect(bedGain);
+            oscSaw.connect(jawariFilter);
+
+            oscTri.start(now);
+            oscSaw.start(now);
+            return { oscTri: oscTri, oscSaw: oscSaw };
+        };
+
+        const vPaMa = createVoice(freqs.fifthOrFourth, 0, 0.24);
+        const vSa1 = createVoice(freqs.s3, -1.6, 0.22);
+        const vSa2 = createVoice(freqs.s3, 1.9, 0.22);
+        const vBass = createVoice(freqs.kharajSa, 0, 0.30);
+
+        jawariFilter.connect(jawariMix);
+        jawariMix.connect(bedGain);
+        bedGain.connect(state.tamburaMasterGain);
+        lfo.start(now);
+
+        state.tamburaBed = {
+            bedGain: bedGain,
+            jawariFilter: jawariFilter,
+            lfo: lfo,
+            lfoGain: lfoGain,
+            vPaMa: vPaMa,
+            vSa1: vSa1,
+            vSa2: vSa2,
+            vBass: vBass,
+        };
+    }
+
+    function updateContinuousTamburaPitch() {
+        if (!state.tamburaBed || !state.audioCtx) return;
+        const now = state.audioCtx.currentTime;
+        const freqs = getTamburaFrequencies();
+        const b = state.tamburaBed;
+
+        b.vPaMa.oscTri.frequency.setTargetAtTime(freqs.fifthOrFourth, now, 0.04);
+        b.vPaMa.oscSaw.frequency.setTargetAtTime(freqs.fifthOrFourth, now, 0.04);
+
+        b.vSa1.oscTri.frequency.setTargetAtTime(freqs.s3, now, 0.04);
+        b.vSa1.oscSaw.frequency.setTargetAtTime(freqs.s3, now, 0.04);
+
+        b.vSa2.oscTri.frequency.setTargetAtTime(freqs.s3, now, 0.04);
+        b.vSa2.oscSaw.frequency.setTargetAtTime(freqs.s3, now, 0.04);
+
+        b.vBass.oscTri.frequency.setTargetAtTime(freqs.kharajSa, now, 0.04);
+        b.vBass.oscSaw.frequency.setTargetAtTime(freqs.kharajSa, now, 0.04);
+
+        b.jawariFilter.frequency.setTargetAtTime(freqs.s3 * 3.8, now, 0.04);
+        b.lfoGain.gain.setTargetAtTime(freqs.s3 * 0.45, now, 0.04);
+    }
+
+    function stopContinuousTamburaBed() {
+        if (!state.tamburaBed || !state.audioCtx) return;
+        const b = state.tamburaBed;
+        state.tamburaBed = null;
+
+        const now = state.audioCtx.currentTime;
+        try {
+            b.bedGain.gain.cancelScheduledValues(now);
+            b.bedGain.gain.setTargetAtTime(0.0001, now, 0.08);
+            window.setTimeout(() => {
+                try {
+                    b.lfo.stop();
+                    [b.vPaMa, b.vSa1, b.vSa2, b.vBass].forEach((v) => {
+                        v.oscTri.stop();
+                        v.oscSaw.stop();
+                    });
+                    b.bedGain.disconnect();
+                } catch (_) { }
+            }, 320);
+        } catch (_) { }
+    }
+
+    function swellTamburaString(stringIdx) {
         if (!state.tamburaRunning || !state.tamburaEnabled || !state.audioCtx || !state.tamburaMasterGain) {
             return;
         }
 
         const ctx = state.audioCtx;
         const now = ctx.currentTime;
-        const s3Freq = state.baseFreq / 2;
+        const freqs = getTamburaFrequencies();
 
-        let freq = s3Freq;
+        let freq = freqs.s3;
         let detuneCents = 0;
-        let stringGainScale = 0.9;
+        let stringGainScale = 0.85;
 
         if (stringIdx === 0) {
-            freq = state.tamburaDroneNote === "Pa" ? s3Freq * 0.75 : s3Freq * (2 / 3);
-            stringGainScale = 0.95;
+            freq = freqs.fifthOrFourth;
+            stringGainScale = 0.9;
         } else if (stringIdx === 1) {
-            freq = s3Freq;
-            detuneCents = -1.2;
-            stringGainScale = 0.88;
+            freq = freqs.s3;
+            detuneCents = -1.4;
+            stringGainScale = 0.85;
         } else if (stringIdx === 2) {
-            freq = s3Freq;
-            detuneCents = 1.5;
-            stringGainScale = 0.88;
+            freq = freqs.s3;
+            detuneCents = 1.7;
+            stringGainScale = 0.85;
         } else {
-            freq = s3Freq * 0.5;
-            stringGainScale = 1.15;
+            freq = freqs.kharajSa;
+            stringGainScale = 1.05;
         }
 
-        const ringDuration = 4.2;
+        const swellAttack = 0.55;
+        const ringDuration = 4.8;
+
         const oscFund = ctx.createOscillator();
         const oscHarm = ctx.createOscillator();
         const jawariFilter = ctx.createBiquadFilter();
@@ -500,12 +665,12 @@
 
         jawariFilter.type = "bandpass";
         jawariFilter.frequency.setValueAtTime(freq * 4.0, now);
-        jawariFilter.Q.setValueAtTime(2.2, now);
+        jawariFilter.Q.setValueAtTime(2.0, now);
 
-        harmGain.gain.setValueAtTime(0.45, now);
+        harmGain.gain.setValueAtTime(0.38, now);
 
         stringGain.gain.setValueAtTime(0.0001, now);
-        stringGain.gain.linearRampToValueAtTime(0.36 * stringGainScale, now + 0.07);
+        stringGain.gain.linearRampToValueAtTime(0.24 * stringGainScale, now + swellAttack);
         stringGain.gain.exponentialRampToValueAtTime(0.0001, now + ringDuration);
 
         oscFund.connect(stringGain);
@@ -531,15 +696,17 @@
             state.tamburaMasterGain.connect(getAudioOutputNode());
         }
 
+        startContinuousTamburaBed();
+
         if (state.tamburaRunning) return;
         state.tamburaRunning = true;
         state.tamburaStep = 0;
 
         function cycleStrings() {
             if (!state.tamburaRunning) return;
-            pluckTamburaString(state.tamburaStep % 4);
+            swellTamburaString(state.tamburaStep % 4);
             state.tamburaStep += 1;
-            state.tamburaTimerId = window.setTimeout(cycleStrings, 750);
+            state.tamburaTimerId = window.setTimeout(cycleStrings, 1100);
         }
 
         cycleStrings();
@@ -551,6 +718,7 @@
             clearTimeout(state.tamburaTimerId);
             state.tamburaTimerId = null;
         }
+        stopContinuousTamburaBed();
         if (state.tamburaMasterGain && state.audioCtx) {
             const now = state.audioCtx.currentTime;
             state.tamburaMasterGain.gain.cancelScheduledValues(now);
@@ -561,7 +729,7 @@
                 try {
                     oldGain.disconnect();
                 } catch (_) { }
-            }, 300);
+            }, 320);
         }
     }
 
@@ -594,17 +762,13 @@
         gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.07);
 
         osc.connect(gain);
-        gain.connect(getAudioOutputNode());
+        gain.connect(getSwaraOutputNode());
         osc.start(now);
         osc.stop(now + 0.08);
     }
 
-    /**
-     * Plays a single beat step while honoring multi-beat sustained notes (R , , ...)
-     * and multi-note slurs ((S R G M), (P D | N Ṡ), etc.) as ONE continuous bow stroke.
-     */
     async function playSwaraAndBeat(avartanam, lineIdx, noteObj, beatIndex, beatDurationSec) {
-        if (!state.audioEnabled) {
+        if (!state.audioEnabled || state.swaraVolume <= 0) {
             stopActiveVoice();
             return;
         }
@@ -616,7 +780,6 @@
         const normalized = noteObj.swara.normalize("NFC");
         const strokeGroup = avartanam.strokeGroups[noteObj.strokeId];
 
-        // Determine target pitch frequency (Karvai ',' preserves previous pitch)
         let freq = null;
         if (normalized === ",") {
             freq = state.lastSustainedFreq;
@@ -625,7 +788,6 @@
             state.lastSustainedFreq = freq;
         }
 
-        // Check if we are already inside this exact continuous bow stroke on this line
         const isContinuingSameStroke = Boolean(
             state.activeVoice &&
             state.activeVoice.lineIdx === lineIdx &&
@@ -635,10 +797,6 @@
 
         if (freq) {
             if (isContinuingSameStroke) {
-                // Inside an active slur or multi-beat sustain:
-                // - If Karvai (','), do NOT alter frequency or envelope; let the note sustain uninterrupted.
-                // - If a new swara inside a slur (e.g., R in (S R G M)), glide left-hand pitch smoothly
-                //   without re-attacking the bow envelope or calling osc.stop() prematurely.
                 if (normalized !== ",") {
                     const { osc1, osc2, filter } = state.activeVoice;
                     osc1.frequency.setTargetAtTime(freq, now, 0.016);
@@ -646,7 +804,6 @@
                     filter.frequency.setTargetAtTime(freq * 5.0, now, 0.016);
                 }
             } else {
-                // Start a brand-new continuous bow stroke spanning all remaining beats of this group
                 stopActiveVoice();
 
                 const remainingBeatsInStroke = strokeGroup
@@ -676,15 +833,15 @@
                 filter.frequency.setValueAtTime(freq * 5.0, now);
 
                 gain.gain.setValueAtTime(0.0001, now);
-                gain.gain.linearRampToValueAtTime(0.45, now + attack);
-                gain.gain.setValueAtTime(0.45, sustainEnd);
+                gain.gain.linearRampToValueAtTime(0.48, now + attack);
+                gain.gain.setValueAtTime(0.48, sustainEnd);
                 gain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
 
                 osc1.connect(filter);
                 osc2.connect(osc2Gain);
                 osc2Gain.connect(filter);
                 filter.connect(gain);
-                gain.connect(getAudioOutputNode());
+                gain.connect(getSwaraOutputNode());
 
                 osc1.start(now);
                 osc2.start(now);
@@ -705,15 +862,14 @@
             stopActiveVoice();
         }
 
-        // Subtle Tala Akshara Click (Beat 1 = Samam accent)
         const clickOsc = ctx.createOscillator();
         const clickGain = ctx.createGain();
         let clickFreq = 660;
-        let clickVol = 0.045;
+        let clickVol = 0.042;
 
         if (beatIndex === 0) {
             clickFreq = 1140;
-            clickVol = 0.11;
+            clickVol = 0.105;
         }
 
         clickOsc.type = "sine";
@@ -722,7 +878,7 @@
         clickGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.04);
 
         clickOsc.connect(clickGain);
-        clickGain.connect(getAudioOutputNode());
+        clickGain.connect(getSwaraOutputNode());
         clickOsc.start(now);
         clickOsc.stop(now + 0.045);
     }
@@ -758,10 +914,8 @@
                     inSlur = true;
                     startsNewStroke = true;
                 } else if (inSlur) {
-                    // Any 2, 3, 4, or N notes inside (...) stay in the same continuous bow stroke
                     startsNewStroke = false;
                 } else {
-                    // Outside a slur, Karvai (',') extends the previous note's bow stroke
                     if (isKarvai && currentStrokeId >= 0) {
                         startsNewStroke = false;
                     } else {
@@ -1048,7 +1202,6 @@
                 bowText.textContent = grp.bowDir;
                 svg.appendChild(bowText);
 
-                // Draw curved slur arc over any multi-note slur (2, 3, 4, or N notes)
                 if (grp.isSlurred && grp.endIdx > grp.startIdx) {
                     const x1 = startRect.left - containerRect.left + startRect.width * 0.25;
                     const x2 = endRect.left - containerRect.left + endRect.width * 0.75;
@@ -1367,9 +1520,9 @@
         });
     }
 
-    if (toggleControlsBtn && playalongTopShell) {
+    if (toggleControlsBtn && playalongSidebar) {
         toggleControlsBtn.addEventListener("click", () => {
-            const isOpen = playalongTopShell.classList.toggle("controls-open");
+            const isOpen = playalongSidebar.classList.toggle("controls-open");
             toggleControlsBtn.setAttribute("aria-expanded", String(isOpen));
             window.setTimeout(drawAllBowingOverlays, 50);
         });
@@ -1395,6 +1548,52 @@
         });
     });
 
+    // Swara Audio Toggle & Volume Slider
+    function syncSwaraAudioUI() {
+        if (audioToggleBtn) {
+            const active = state.audioEnabled && state.swaraVolume > 0;
+            audioToggleBtn.textContent = active ? "\uD83D\uDD0A Swaras ON" : "\uD83D\uDD07 Swaras OFF";
+            audioToggleBtn.classList.toggle("active", active);
+        }
+        if (swaraVolValue) {
+            swaraVolValue.textContent = String(state.swaraVolume);
+        }
+        if (state.swaraMasterGain && state.audioCtx) {
+            state.swaraMasterGain.gain.setTargetAtTime(
+                getSwaraGainLevel(),
+                state.audioCtx.currentTime,
+                0.03
+            );
+        }
+    }
+
+    if (audioToggleBtn) {
+        audioToggleBtn.addEventListener("click", async () => {
+            await ensureAudioContext();
+            state.audioEnabled = !state.audioEnabled;
+            if (state.audioEnabled && state.swaraVolume === 0) {
+                state.swaraVolume = 75;
+                if (swaraVolSlider) swaraVolSlider.value = "75";
+            }
+            if (!state.audioEnabled) stopActiveVoice();
+            syncSwaraAudioUI();
+        });
+    }
+
+    if (swaraVolSlider) {
+        swaraVolSlider.addEventListener("input", async (e) => {
+            await ensureAudioContext();
+            state.swaraVolume = Number(e.target.value);
+            if (state.swaraVolume > 0 && !state.audioEnabled) {
+                state.audioEnabled = true;
+            } else if (state.swaraVolume === 0) {
+                stopActiveVoice();
+            }
+            syncSwaraAudioUI();
+        });
+    }
+
+    // Tambura Controls
     if (tamburaToggleBtn) {
         tamburaToggleBtn.addEventListener("click", () => {
             state.tamburaEnabled = !state.tamburaEnabled;
@@ -1413,12 +1612,9 @@
             state.baseFreq = entry.freq4;
             if (shrutiValue) shrutiValue.textContent = entry.name;
 
-            if (state.tamburaEnabled) {
-                if (!state.tamburaRunning) {
-                    await startTambura();
-                } else {
-                    pluckTamburaString(1);
-                }
+            updateContinuousTamburaPitch();
+            if (state.tamburaEnabled && !state.tamburaRunning) {
+                await startTambura();
             }
         });
     }
@@ -1427,12 +1623,9 @@
         radio.addEventListener("change", async (e) => {
             if (e.target.checked) {
                 state.tamburaDroneNote = e.target.value;
-                if (state.tamburaEnabled) {
-                    if (!state.tamburaRunning) {
-                        await startTambura();
-                    } else {
-                        pluckTamburaString(0);
-                    }
+                updateContinuousTamburaPitch();
+                if (state.tamburaEnabled && !state.tamburaRunning) {
+                    await startTambura();
                 }
             }
         });
@@ -1541,15 +1734,6 @@
             repeatGroup.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active"));
             btn.classList.add("active");
             state.repeatMode = btn.dataset.repeat;
-        });
-    }
-
-    if (audioToggleBtn) {
-        audioToggleBtn.addEventListener("click", () => {
-            state.audioEnabled = !state.audioEnabled;
-            audioToggleBtn.textContent = state.audioEnabled ? "\uD83D\uDD0A Swaras" : "\uD83D\uDD07 Swaras";
-            audioToggleBtn.classList.toggle("active", state.audioEnabled);
-            if (!state.audioEnabled) stopActiveVoice();
         });
     }
 
