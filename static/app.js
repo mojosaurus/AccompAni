@@ -408,7 +408,7 @@
     }
 
     // ==========================================================================
-    // 3. WEB AUDIO ENGINE (iOS Safari & Chrome Compatible)
+    // 3. WEB AUDIO ENGINE (Continuous Slurs & Multi-Beat Karvai Sustains)
     // ==========================================================================
     async function ensureAudioContext() {
         if (!state.audioCtx) {
@@ -431,7 +431,7 @@
             } catch (_) { }
         }
 
-        // Play a 1-sample silent buffer once to unlock Web Audio hardware on iOS Safari
+        // Unlock Web Audio hardware on iOS Safari with a silent buffer
         if (!state.audioUnlocked && state.audioCtx.state === "running") {
             try {
                 const buffer = state.audioCtx.createBuffer(1, 1, 22050);
@@ -599,7 +599,11 @@
         osc.stop(now + 0.08);
     }
 
-    async function playSwaraAndBeat(noteObj, beatIndex, durationSec, isSameSlurAsPrev) {
+    /**
+     * Plays a single beat step while honoring multi-beat sustained notes (R , , ...)
+     * and multi-note slurs ((S R G M), (P D | N Ṡ), etc.) as ONE continuous bow stroke.
+     */
+    async function playSwaraAndBeat(avartanam, lineIdx, noteObj, beatIndex, beatDurationSec) {
         if (!state.audioEnabled) {
             stopActiveVoice();
             return;
@@ -610,7 +614,9 @@
         const now = ctx.currentTime;
         const ratios = (RAGA_CONFIG[state.selectedRagam] || RAGA_CONFIG.shankarabharanam).ratios;
         const normalized = noteObj.swara.normalize("NFC");
+        const strokeGroup = avartanam.strokeGroups[noteObj.strokeId];
 
+        // Determine target pitch frequency (Karvai ',' preserves previous pitch)
         let freq = null;
         if (normalized === ",") {
             freq = state.lastSustainedFreq;
@@ -619,26 +625,39 @@
             state.lastSustainedFreq = freq;
         }
 
-        const isLegatoContinuation = (normalized === "," || Boolean(isSameSlurAsPrev)) && state.activeVoice;
+        // Check if we are already inside this exact continuous bow stroke on this line
+        const isContinuingSameStroke = Boolean(
+            state.activeVoice &&
+            state.activeVoice.lineIdx === lineIdx &&
+            state.activeVoice.strokeId === noteObj.strokeId &&
+            now < state.activeVoice.endTime - 0.01
+        );
 
         if (freq) {
-            if (isLegatoContinuation) {
-                const { osc1, osc2, gain } = state.activeVoice;
-                osc1.frequency.setTargetAtTime(freq, now, 0.012);
-                osc2.frequency.setTargetAtTime(freq, now, 0.012);
-                gain.gain.cancelScheduledValues(now);
-                gain.gain.setValueAtTime(0.45, now);
-                gain.gain.setValueAtTime(0.45, now + Math.max(0.02, durationSec - 0.015));
-                gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSec + 0.01);
-                try {
-                    osc1.stop(now + durationSec + 0.02);
-                    osc2.stop(now + durationSec + 0.02);
-                } catch (_) { }
+            if (isContinuingSameStroke) {
+                // Inside an active slur or multi-beat sustain:
+                // - If Karvai (','), do NOT alter frequency or envelope; let the note sustain uninterrupted.
+                // - If a new swara inside a slur (e.g., R in (S R G M)), glide left-hand pitch smoothly
+                //   without re-attacking the bow envelope or calling osc.stop() prematurely.
+                if (normalized !== ",") {
+                    const { osc1, osc2, filter } = state.activeVoice;
+                    osc1.frequency.setTargetAtTime(freq, now, 0.016);
+                    osc2.frequency.setTargetAtTime(freq, now, 0.016);
+                    filter.frequency.setTargetAtTime(freq * 5.0, now, 0.016);
+                }
             } else {
+                // Start a brand-new continuous bow stroke spanning all remaining beats of this group
                 stopActiveVoice();
-                const attack = Math.min(0.02, durationSec * 0.1);
-                const release = Math.min(0.018, durationSec * 0.1);
-                const sustainEnd = Math.max(now + attack, now + durationSec - release);
+
+                const remainingBeatsInStroke = strokeGroup
+                    ? Math.max(1, strokeGroup.endIdx - beatIndex + 1)
+                    : 1;
+                const totalStrokeSec = remainingBeatsInStroke * beatDurationSec;
+
+                const attack = Math.min(0.022, beatDurationSec * 0.12);
+                const release = Math.min(0.02, beatDurationSec * 0.12);
+                const sustainEnd = Math.max(now + attack, now + totalStrokeSec - release);
+                const stopAt = now + totalStrokeSec + 0.015;
 
                 const osc1 = ctx.createOscillator();
                 const osc2 = ctx.createOscillator();
@@ -659,7 +678,7 @@
                 gain.gain.setValueAtTime(0.0001, now);
                 gain.gain.linearRampToValueAtTime(0.45, now + attack);
                 gain.gain.setValueAtTime(0.45, sustainEnd);
-                gain.gain.exponentialRampToValueAtTime(0.0001, now + durationSec + 0.01);
+                gain.gain.exponentialRampToValueAtTime(0.0001, stopAt);
 
                 osc1.connect(filter);
                 osc2.connect(osc2Gain);
@@ -669,23 +688,32 @@
 
                 osc1.start(now);
                 osc2.start(now);
-                osc1.stop(now + durationSec + 0.02);
-                osc2.stop(now + durationSec + 0.02);
+                osc1.stop(stopAt + 0.01);
+                osc2.stop(stopAt + 0.01);
 
-                state.activeVoice = { osc1, osc2, gain };
+                state.activeVoice = {
+                    lineIdx: lineIdx,
+                    strokeId: noteObj.strokeId,
+                    osc1: osc1,
+                    osc2: osc2,
+                    filter: filter,
+                    gain: gain,
+                    endTime: stopAt,
+                };
             }
         } else {
             stopActiveVoice();
         }
 
+        // Subtle Tala Akshara Click (Beat 1 = Samam accent)
         const clickOsc = ctx.createOscillator();
         const clickGain = ctx.createGain();
         let clickFreq = 660;
-        let clickVol = 0.055;
+        let clickVol = 0.045;
 
         if (beatIndex === 0) {
             clickFreq = 1140;
-            clickVol = 0.13;
+            clickVol = 0.11;
         }
 
         clickOsc.type = "sine";
@@ -723,36 +751,51 @@
                 const startsSlur = tok.startsWith("(");
                 const endsSlur = tok.endsWith(")");
                 const swara = tok.replace(/^\(+/, "").replace(/\)+$/, "");
+                const isKarvai = swara === ",";
 
+                let startsNewStroke = false;
                 if (startsSlur) {
                     inSlur = true;
+                    startsNewStroke = true;
+                } else if (inSlur) {
+                    // Any 2, 3, 4, or N notes inside (...) stay in the same continuous bow stroke
+                    startsNewStroke = false;
+                } else {
+                    // Outside a slur, Karvai (',') extends the previous note's bow stroke
+                    if (isKarvai && currentStrokeId >= 0) {
+                        startsNewStroke = false;
+                    } else {
+                        startsNewStroke = true;
+                    }
+                }
+
+                if (startsNewStroke) {
                     currentStrokeId += 1;
                     strokeGroups.push({
                         strokeId: currentStrokeId,
                         startIdx: flatIndex,
                         endIdx: flatIndex,
-                        isSlurred: true,
+                        durationBeats: 1,
+                        isSlurred: inSlur,
                         bowDir: currentStrokeId % 2 === 0 ? DOWN_BOW : UP_BOW,
                     });
-                } else if (!inSlur) {
-                    currentStrokeId += 1;
-                    strokeGroups.push({
-                        strokeId: currentStrokeId,
-                        startIdx: flatIndex,
-                        endIdx: flatIndex,
-                        isSlurred: false,
-                        bowDir: currentStrokeId % 2 === 0 ? DOWN_BOW : UP_BOW,
-                    });
+                } else {
+                    const activeGroup = strokeGroups[strokeGroups.length - 1];
+                    activeGroup.endIdx = flatIndex;
+                    activeGroup.durationBeats = flatIndex - activeGroup.startIdx + 1;
+                    if (inSlur) {
+                        activeGroup.isSlurred = true;
+                    }
                 }
 
                 const activeGroup = strokeGroups[strokeGroups.length - 1];
-                activeGroup.endIdx = flatIndex;
-
                 const noteObj = {
                     swara: swara,
                     flatIndex: flatIndex,
                     strokeId: currentStrokeId,
-                    isSlurred: inSlur,
+                    startsStroke: startsNewStroke,
+                    isSlurred: activeGroup.isSlurred,
+                    isKarvai: isKarvai,
                     bowDir: activeGroup.bowDir,
                 };
 
@@ -922,10 +965,11 @@
                             cancelAnimationFrame(state.scrollRafId);
                             state.scrollRafId = null;
                         }
+                        stopActiveVoice();
                         state.lineIdx = lIdx;
                         state.beatIdx = noteObj.flatIndex;
                         updateHighlight(true, true);
-                        playSwaraAndBeat(noteObj, noteObj.flatIndex, state.speedSec, false);
+                        playSwaraAndBeat(av, lIdx, noteObj, noteObj.flatIndex, state.speedSec);
                         if (state.isPlaying) {
                             beginImmediatePlayback();
                         }
@@ -1004,6 +1048,7 @@
                 bowText.textContent = grp.bowDir;
                 svg.appendChild(bowText);
 
+                // Draw curved slur arc over any multi-note slur (2, 3, 4, or N notes)
                 if (grp.isSlurred && grp.endIdx > grp.startIdx) {
                     const x1 = startRect.left - containerRect.left + startRect.width * 0.25;
                     const x2 = endRect.left - containerRect.left + endRect.width * 0.75;
@@ -1236,11 +1281,9 @@
 
         const av = ex.avartanams[state.lineIdx];
         const noteObj = av.flatNotes[state.beatIdx];
-        const prevNoteObj = state.beatIdx > 0 ? av.flatNotes[state.beatIdx - 1] : null;
-        const isSameSlur = Boolean(prevNoteObj && prevNoteObj.isSlurred && prevNoteObj.strokeId === noteObj.strokeId);
 
         updateHighlight(true, true);
-        playSwaraAndBeat(noteObj, state.beatIdx, state.speedSec, isSameSlur);
+        playSwaraAndBeat(av, state.lineIdx, noteObj, state.beatIdx, state.speedSec);
 
         state.stepCounter += 1;
         const beatEndMs = state.playbackAnchorTime + state.stepCounter * (state.speedSec * 1000);
@@ -1468,6 +1511,7 @@
             speedGroup.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active"));
             btn.classList.add("active");
             state.speedSec = Number(btn.dataset.speed);
+            stopActiveVoice();
 
             if (state.isCountingDown) {
                 if (countdownSub) {

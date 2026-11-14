@@ -2,7 +2,7 @@
 
 Every Carnatic violin student knows the space between finishing one set of lessons and waiting for a guru to introduce the next. After completing my *Sarali varisais*, I found myself in that exact phase—needing to solidify my bowing, fingering, and rhythmic stability at my current skill level before stepping up to the next stage.
 
-The breakthrough came when my nephew-in-law, Anirudh—or Ani, as we call him—sang a few *alankarams* for me to shadow on the violin. Playing alongside his voice turned solitary drills into an intuitive musical dialogue, helping me lock into the *tala* and refine my phrasing in real time.
+The breakthrough came when my nephew-in-law, *Anirudh* or *Ani*, as we call him—sang a few *alankarams* for me to shadow on the violin. Playing alongside his voice turned solitary drills into an intuitive musical dialogue, helping me lock into the *tala* and refine my phrasing in real time.
 
 **AccompAni** grew directly out of those play-along sessions with Ani. Built as an exhaustive, grammatically compliant library of practice tracks tailored to each skill level, this project gives learners a structured way to strengthen bowing control, finger placement, and rhythmic confidence—bridging the gap between lessons so you are always ready for what your guru teaches next.
 
