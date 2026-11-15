@@ -1,4 +1,18 @@
 (() => {
+    // Switch iOS Safari audio session from "ambient" (muted by ringer switch) to "playback"
+    function enablePlaybackAudioSession() {
+        try {
+            if (typeof navigator !== "undefined" && navigator.audioSession) {
+                navigator.audioSession.type = "playback";
+            }
+        } catch (_) { }
+    }
+    enablePlaybackAudioSession();
+
+    // Valid 100-sample silent PCM WAV data URI to open the iOS Media audio route on tap
+    const SILENT_WAV_DATA_URI =
+        "data:audio/wav;base64,UklGRuwAAABXQVZFZm10IBAAAAABAAEAIlYAAESsAAACABAAZGF0YcgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==";
+
     // Exhaustive & curated module catalog for Sarali Varisai
     const DEFAULT_MODULES = [
         {
@@ -125,7 +139,7 @@
         stepCounter: 0,
         audioCtx: null,
         audioUnlocked: false,
-        masterCompressor: null,
+        silentHtmlAudio: null,
         activeVoice: null,
         lastSustainedFreq: null,
     };
@@ -198,7 +212,6 @@
             state.previousView = state.currentView;
         }
 
-        // Relocate header into the Right Panel during Playalong so Left Panel has ONLY notes
         if (appHeader) {
             if (viewName === "playalong" && playalongSidebar) {
                 playalongSidebar.prepend(appHeader);
@@ -341,6 +354,7 @@
                 '<div class="tile-footer">' + mod.exercise_count + " Exercises \u00B7 Launch Playalong \u2192</div>";
 
             tile.addEventListener("click", () => {
+                unlockAudioSync();
                 state.selectedModule = mod;
                 launchPlayalong(mod, state.selectedRagam);
             });
@@ -428,65 +442,80 @@
     }
 
     // ==========================================================================
-    // 3. WEB AUDIO ENGINE (Continuous Tambura Drone + Swara Volume Bus)
+    // 3. SYNCHRONOUS iOS SAFARI & CHROME AUDIO UNLOCK + SYNTHESIZER ENGINE
     // ==========================================================================
     function getSwaraGainLevel() {
         if (!state.audioEnabled) return 0.0001;
-        return (state.swaraVolume / 100) * 0.9;
+        return (state.swaraVolume / 100) * 0.65;
     }
 
     function getTamburaGainLevel() {
         if (!state.tamburaEnabled) return 0.0001;
-        return (state.tamburaVolume / 100) * 0.52;
+        return (state.tamburaVolume / 100) * 0.38;
     }
 
-    async function ensureAudioContext() {
+    /**
+     * MUST run synchronously inside a direct user interaction (touchend / click / keydown)
+     * so iOS Safari unlocks Web Audio and switches to the Media playback channel.
+     */
+    function unlockAudioSync() {
+        enablePlaybackAudioSession();
+
+        // 1. Play a tiny silent HTML5 <audio> clip to force iOS onto the Media audio channel
+        //    (bypasses the physical iPhone Ringer/Silent switch even on older iOS versions)
+        try {
+            if (!state.silentHtmlAudio) {
+                const a = document.createElement("audio");
+                a.setAttribute("playsinline", "");
+                a.playsInline = true;
+                a.preload = "auto";
+                a.src = SILENT_WAV_DATA_URI;
+                state.silentHtmlAudio = a;
+            }
+            const p = state.silentHtmlAudio.play();
+            if (p && typeof p.catch === "function") {
+                p.catch(() => { });
+            }
+        } catch (_) { }
+
+        // 2. Synchronously create or resume AudioContext
         if (!state.audioCtx) {
             const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return null;
             state.audioCtx = new AudioCtx();
-
-            const comp = state.audioCtx.createDynamicsCompressor();
-            comp.threshold.setValueAtTime(-16, state.audioCtx.currentTime);
-            comp.knee.setValueAtTime(12, state.audioCtx.currentTime);
-            comp.ratio.setValueAtTime(4, state.audioCtx.currentTime);
-            comp.attack.setValueAtTime(0.005, state.audioCtx.currentTime);
-            comp.release.setValueAtTime(0.15, state.audioCtx.currentTime);
-            comp.connect(state.audioCtx.destination);
-            state.masterCompressor = comp;
         }
 
         if (!state.swaraMasterGain && state.audioCtx) {
             state.swaraMasterGain = state.audioCtx.createGain();
             state.swaraMasterGain.gain.setValueAtTime(getSwaraGainLevel(), state.audioCtx.currentTime);
-            state.swaraMasterGain.connect(state.masterCompressor || state.audioCtx.destination);
+            state.swaraMasterGain.connect(state.audioCtx.destination);
         }
 
         if (state.audioCtx.state === "suspended") {
             try {
-                await state.audioCtx.resume();
+                state.audioCtx.resume();
             } catch (_) { }
         }
 
-        if (!state.audioUnlocked && state.audioCtx.state === "running") {
+        // 3. Synchronously fire a 1-sample silent Web Audio buffer inside the gesture stack
+        if (!state.audioUnlocked && state.audioCtx) {
             try {
                 const buffer = state.audioCtx.createBuffer(1, 1, 22050);
                 const source = state.audioCtx.createBufferSource();
                 source.buffer = buffer;
                 source.connect(state.audioCtx.destination);
                 source.start(0);
-                state.audioUnlocked = true;
+                if (state.audioCtx.state === "running") {
+                    state.audioUnlocked = true;
+                }
             } catch (_) { }
         }
 
         return state.audioCtx;
     }
 
-    function getAudioOutputNode() {
-        return state.masterCompressor || state.audioCtx.destination;
-    }
-
     function getSwaraOutputNode() {
-        return state.swaraMasterGain || getAudioOutputNode();
+        return state.swaraMasterGain || state.audioCtx.destination;
     }
 
     function getTamburaFrequencies() {
@@ -509,7 +538,7 @@
 
         const bedGain = ctx.createGain();
         bedGain.gain.setValueAtTime(0.0001, now);
-        bedGain.gain.linearRampToValueAtTime(0.55, now + 0.6);
+        bedGain.gain.linearRampToValueAtTime(0.55, now + 0.5);
 
         const jawariFilter = ctx.createBiquadFilter();
         jawariFilter.type = "bandpass";
@@ -685,15 +714,15 @@
         oscHarm.stop(now + ringDuration + 0.05);
     }
 
-    async function startTambura() {
+    function startTambura() {
         if (!state.tamburaEnabled) return;
-        const ctx = await ensureAudioContext();
-        if (ctx.state !== "running") return;
+        const ctx = unlockAudioSync();
+        if (!ctx) return;
 
         if (!state.tamburaMasterGain) {
             state.tamburaMasterGain = ctx.createGain();
             state.tamburaMasterGain.gain.setValueAtTime(getTamburaGainLevel(), ctx.currentTime);
-            state.tamburaMasterGain.connect(getAudioOutputNode());
+            state.tamburaMasterGain.connect(ctx.destination);
         }
 
         startContinuousTamburaBed();
@@ -747,10 +776,10 @@
         state.activeVoice = null;
     }
 
-    async function playCountdownTick(secondsLeft) {
+    function playCountdownTick(secondsLeft) {
         if (!state.audioEnabled) return;
-        const ctx = await ensureAudioContext();
-        if (ctx.state !== "running") return;
+        const ctx = unlockAudioSync();
+        if (!ctx) return;
 
         const now = ctx.currentTime;
         const osc = ctx.createOscillator();
@@ -767,13 +796,13 @@
         osc.stop(now + 0.08);
     }
 
-    async function playSwaraAndBeat(avartanam, lineIdx, noteObj, beatIndex, beatDurationSec) {
+    function playSwaraAndBeat(avartanam, lineIdx, noteObj, beatIndex, beatDurationSec) {
         if (!state.audioEnabled || state.swaraVolume <= 0) {
             stopActiveVoice();
             return;
         }
-        const ctx = await ensureAudioContext();
-        if (ctx.state !== "running") return;
+        const ctx = unlockAudioSync();
+        if (!ctx) return;
 
         const now = ctx.currentTime;
         const ratios = (RAGA_CONFIG[state.selectedRagam] || RAGA_CONFIG.shankarabharanam).ratios;
@@ -1111,6 +1140,7 @@
                     noteSpan.dataset.flatIdx = String(noteObj.flatIndex);
 
                     noteSpan.addEventListener("click", () => {
+                        unlockAudioSync();
                         if (state.gapTimerId !== null) {
                             clearTimeout(state.gapTimerId);
                             state.gapTimerId = null;
@@ -1337,10 +1367,10 @@
         return (state.currentExerciseIdx + 1) % total;
     }
 
-    async function startWithCountdown() {
+    function startWithCountdown() {
         if (state.exercises.length === 0) return;
         stopAll();
-        await ensureAudioContext();
+        unlockAudioSync();
 
         if (state.tamburaEnabled && !state.tamburaRunning) {
             startTambura();
@@ -1386,7 +1416,7 @@
         state.countdownTimerId = window.setTimeout(tickCountdown, firstDelay);
     }
 
-    async function beginImmediatePlayback() {
+    function beginImmediatePlayback() {
         if (state.exercises.length === 0) return;
         if (state.timerId !== null) {
             clearTimeout(state.timerId);
@@ -1401,7 +1431,7 @@
             state.scrollRafId = null;
         }
 
-        await ensureAudioContext();
+        unlockAudioSync();
         state.isPlaying = true;
         state.playbackAnchorTime = performance.now();
         state.stepCounter = 0;
@@ -1531,6 +1561,7 @@
     // Step 1 -> Step 2 (Practice Level -> Ragam)
     document.querySelectorAll("[data-select-level]").forEach((btn) => {
         btn.addEventListener("click", () => {
+            unlockAudioSync();
             state.selectedLevel = btn.dataset.selectLevel;
             navigateTo("ragam");
         });
@@ -1539,6 +1570,7 @@
     // Step 2 -> Step 3 (Ragam -> Exercise Focus)
     document.querySelectorAll("[data-select-ragam]").forEach((btn) => {
         btn.addEventListener("click", () => {
+            unlockAudioSync();
             state.selectedRagam = btn.dataset.selectRagam;
             const ragaObj = RAGA_CONFIG[state.selectedRagam];
             if (modulesKicker && ragaObj) {
@@ -1568,8 +1600,8 @@
     }
 
     if (audioToggleBtn) {
-        audioToggleBtn.addEventListener("click", async () => {
-            await ensureAudioContext();
+        audioToggleBtn.addEventListener("click", () => {
+            unlockAudioSync();
             state.audioEnabled = !state.audioEnabled;
             if (state.audioEnabled && state.swaraVolume === 0) {
                 state.swaraVolume = 75;
@@ -1581,8 +1613,8 @@
     }
 
     if (swaraVolSlider) {
-        swaraVolSlider.addEventListener("input", async (e) => {
-            await ensureAudioContext();
+        swaraVolSlider.addEventListener("input", (e) => {
+            unlockAudioSync();
             state.swaraVolume = Number(e.target.value);
             if (state.swaraVolume > 0 && !state.audioEnabled) {
                 state.audioEnabled = true;
@@ -1596,6 +1628,7 @@
     // Tambura Controls
     if (tamburaToggleBtn) {
         tamburaToggleBtn.addEventListener("click", () => {
+            unlockAudioSync();
             state.tamburaEnabled = !state.tamburaEnabled;
             tamburaToggleBtn.textContent = state.tamburaEnabled ? "Tambura ON" : "Tambura OFF";
             tamburaToggleBtn.classList.toggle("active", state.tamburaEnabled);
@@ -1604,7 +1637,8 @@
     }
 
     if (shrutiSlider) {
-        shrutiSlider.addEventListener("input", async (e) => {
+        shrutiSlider.addEventListener("input", (e) => {
+            unlockAudioSync();
             const idx = Number(e.target.value);
             const entry = SHRUTI_NOTES[idx];
             if (!entry) return;
@@ -1614,32 +1648,33 @@
 
             updateContinuousTamburaPitch();
             if (state.tamburaEnabled && !state.tamburaRunning) {
-                await startTambura();
+                startTambura();
             }
         });
     }
 
     tamburaRadios.forEach((radio) => {
-        radio.addEventListener("change", async (e) => {
+        radio.addEventListener("change", (e) => {
             if (e.target.checked) {
+                unlockAudioSync();
                 state.tamburaDroneNote = e.target.value;
                 updateContinuousTamburaPitch();
                 if (state.tamburaEnabled && !state.tamburaRunning) {
-                    await startTambura();
+                    startTambura();
                 }
             }
         });
     });
 
     if (tamburaVolSlider) {
-        tamburaVolSlider.addEventListener("input", async (e) => {
+        tamburaVolSlider.addEventListener("input", (e) => {
+            const ctx = unlockAudioSync();
             state.tamburaVolume = Number(e.target.value);
             if (tamburaVolValue) tamburaVolValue.textContent = String(state.tamburaVolume);
-            await ensureAudioContext();
-            if (state.tamburaMasterGain && state.audioCtx) {
+            if (state.tamburaMasterGain && ctx) {
                 state.tamburaMasterGain.gain.setTargetAtTime(
                     getTamburaGainLevel(),
-                    state.audioCtx.currentTime,
+                    ctx.currentTime,
                     0.04
                 );
             }
@@ -1649,25 +1684,25 @@
         });
     }
 
-    async function bootTamburaOnFirstGesture() {
-        const ctx = await ensureAudioContext();
-        if (ctx.state === "running") {
+    // Unlock iOS Safari audio synchronously on valid user activation events (touchend / click / keydown)
+    function bootTamburaOnFirstGesture() {
+        const ctx = unlockAudioSync();
+        if (ctx && ctx.state === "running") {
             if (state.tamburaEnabled && !state.tamburaRunning) {
                 startTambura();
             }
-            document.removeEventListener("touchstart", bootTamburaOnFirstGesture);
+            document.removeEventListener("touchend", bootTamburaOnFirstGesture);
             document.removeEventListener("click", bootTamburaOnFirstGesture);
-            document.removeEventListener("pointerup", bootTamburaOnFirstGesture);
             document.removeEventListener("keydown", bootTamburaOnFirstGesture);
         }
     }
-    document.addEventListener("touchstart", bootTamburaOnFirstGesture, { passive: true });
+    document.addEventListener("touchend", bootTamburaOnFirstGesture);
     document.addEventListener("click", bootTamburaOnFirstGesture);
-    document.addEventListener("pointerup", bootTamburaOnFirstGesture);
     document.addEventListener("keydown", bootTamburaOnFirstGesture);
 
     if (exerciseSelect) {
         exerciseSelect.addEventListener("change", (e) => {
+            unlockAudioSync();
             const wasPlaying = state.isPlaying;
             stopAll();
             selectExercise(Number(e.target.value), false);
@@ -1677,6 +1712,7 @@
 
     if (prevBtn) {
         prevBtn.addEventListener("click", () => {
+            unlockAudioSync();
             const wasPlaying = state.isPlaying;
             stopAll();
             selectExercise(state.currentExerciseIdx - 1, false);
@@ -1686,6 +1722,7 @@
 
     if (nextBtn) {
         nextBtn.addEventListener("click", () => {
+            unlockAudioSync();
             const wasPlaying = state.isPlaying;
             const targetIdx =
                 state.orderMode === "random"
@@ -1701,6 +1738,7 @@
         speedGroup.addEventListener("click", (e) => {
             const btn = e.target.closest(".seg-btn");
             if (!btn) return;
+            unlockAudioSync();
             speedGroup.querySelectorAll(".seg-btn").forEach((b) => b.classList.remove("active"));
             btn.classList.add("active");
             state.speedSec = Number(btn.dataset.speed);
@@ -1738,6 +1776,7 @@
     }
 
     function handlePlayPauseToggle() {
+        unlockAudioSync();
         if (state.isPlaying || state.isCountingDown) {
             stopAll();
         } else {
@@ -1750,6 +1789,7 @@
 
     if (restartBtn) {
         restartBtn.addEventListener("click", () => {
+            unlockAudioSync();
             const wasActive = state.isPlaying || state.isCountingDown;
             stopAll();
             state.lineIdx = 0;
